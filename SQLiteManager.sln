@@ -1,0 +1,37 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.13.35931.197 d17.13
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SQLiteManager", "SQLiteManager\SQLiteManager.csproj", "{96299A94-C664-4B1A-A330-3D6BF21ABFB8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Trash", "Trash\Trash.csproj", "{CE53AF12-5005-47B0-B747-7F27B52A54C0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SQLiteManager.Demo", "SQLiteManager.Demo\SQLiteManager.Demo.csproj", "{BA1D13B9-2A5B-4BB6-B768-5DEEE6D680B1}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{96299A94-C664-4B1A-A330-3D6BF21ABFB8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{96299A94-C664-4B1A-A330-3D6BF21ABFB8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{96299A94-C664-4B1A-A330-3D6BF21ABFB8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{96299A94-C664-4B1A-A330-3D6BF21ABFB8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CE53AF12-5005-47B0-B747-7F27B52A54C0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CE53AF12-5005-47B0-B747-7F27B52A54C0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CE53AF12-5005-47B0-B747-7F27B52A54C0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CE53AF12-5005-47B0-B747-7F27B52A54C0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BA1D13B9-2A5B-4BB6-B768-5DEEE6D680B1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BA1D13B9-2A5B-4BB6-B768-5DEEE6D680B1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BA1D13B9-2A5B-4BB6-B768-5DEEE6D680B1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BA1D13B9-2A5B-4BB6-B768-5DEEE6D680B1}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {8F713F25-E6EC-40F8-BE34-E247221ECED2}
+	EndGlobalSection
+EndGlobal
