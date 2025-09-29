@@ -1,31 +1,43 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net8.0-windows</TargetFramework>
-    <Nullable>enable</Nullable>
-    <UseWPF>true</UseWPF>
-    <ImplicitUsings>enable</ImplicitUsings>
+	<PropertyGroup>
+		<TargetFrameworks>net8.0</TargetFrameworks>
+		<LangVersion>10.0</LangVersion>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
 
-	  <!-- Propriétés NuGet -->
-	  <PackageId>SQLiteManager</PackageId>
-	  <Version>1.0.3</Version>
-	  <Authors>Votre Nom</Authors>
-	  <Company>Votre Entreprise</Company>
-	  <Description>Un gestionnaire SQLite facile à utiliser pour les applications .NET</Description>
-	  <PackageTags>sqlite;database;entityframework;manager</PackageTags>
-	  <PackageLicenseExpression>MIT</PackageLicenseExpression>
-	  <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+		<!-- Propriétés NuGet -->
+		<PackageId>MatthL.SqliteEF</PackageId>
+		<Title>SqliteEF</Title>
+		<Version>0.9.0</Version>
+		<Authors>Matthieu L</Authors>
+		<Company>Matthieu L</Company>
+		<Description>Reduce drastically the boilerplate for Sqlite + Entity framework</Description>
+		<PackageTags>sqlite;ef;entity-framework;boilerplate;crud;repository;easy;error-handling</PackageTags>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<RepositoryUrl>https://github.com/LapercheMatthieu/SqliteEF</RepositoryUrl>
+		<PackageProjectUrl>https://github.com/LapercheMatthieu/SqliteEF.Core</PackageProjectUrl>
 
-	  <!-- Inclure les fichiers PDB pour le débogage -->
-	  <IncludeSymbols>true</IncludeSymbols>
-	  <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-  </PropertyGroup>
+		<!-- Build -->
+		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
 
-  <ItemGroup>
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
-    <PackageReference Include="MatthL.ResultLogger" Version="0.9.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.4" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.4" />
-  </ItemGroup>
-
+		<!-- Inclure les fichiers PDB pour le débogage -->
+		<IncludeSymbols>true</IncludeSymbols>
+		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+	</PropertyGroup>
+	<ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+		<PackageReference Include="Nullable" Version="1.3.1" PrivateAssets="all" />
+	</ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+		<PackageReference Include="MatthL.ResultLogger" Version="0.9.0" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.4" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="9.0.4" />
+	</ItemGroup>
+	<ItemGroup>
+		<None Include="LICENSE" Pack="true" PackagePath="\" />
+		<None Include="README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
 </Project>
