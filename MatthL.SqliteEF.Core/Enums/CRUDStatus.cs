@@ -4,9 +4,13 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace MatthL.SqliteEF
+namespace MatthL.SqliteEF.Core.Enums
 {
-    public class SQLManager
+    public enum CRUDStatus
     {
+        Create,
+        Read,
+        Update,
+        Delete,
     }
 }

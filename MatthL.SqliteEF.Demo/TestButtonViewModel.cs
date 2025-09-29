@@ -4,9 +4,9 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace MatthL.SqliteEF
+namespace MatthL.SqliteEF.Demo
 {
-    public class SQLManager
+    internal class TestButtonViewModel
     {
     }
 }

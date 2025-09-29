@@ -4,9 +4,11 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace MatthL.SqliteEF
+namespace MatthL.SqliteEF.Core.Repositories
 {
-    public class SQLManager
+    public interface ISqliteEFRepository
     {
+        public void Initialize();
+
     }
 }

@@ -1,0 +1,14 @@
+﻿The objectives are to create Repositories that are linked to the SQLManager 
+same effect to do Repo.add and SQLManager.Add
+
+A repository has many lists of entities and they are synchronized all the time with the SQL (only the one used) 
+It is also possible to empty the repo without taking it out of the database
+
+pourquoi j'ai fais des repos dans les autres ? 
+
+Attention il faut aussi la jouer intelligent pour éviter trop d'opération IO
+
+Les updates ne sont pas pressés
+les add ont besoin de l'ID
+Les delete ne sont pas pressés 
+les get sont automatiques

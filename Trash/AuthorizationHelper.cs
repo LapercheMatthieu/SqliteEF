@@ -2,7 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using System.Collections.ObjectModel;
 
-namespace SQLiteManager.Authorizations
+namespace MatthL.SqliteEF.Authorizations
 {
     /// <summary>
     /// Cette classe permet d'attribuer des authorizations. Elle utilise soit le role attribué, soit le role Admin soit le role Invité
