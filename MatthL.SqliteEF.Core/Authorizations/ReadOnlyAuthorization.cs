@@ -8,9 +8,9 @@ namespace MatthL.SqliteEF.Core.Authorizations
 {
     public class ReadOnlyAuthorization : IAuthorizationManager
     {
-        public bool CanCreate(string tableName) { return true; }
+        public bool CanCreate(string tableName) { return false; }
         public bool CanRead(string tableName) { return true; }
-        public bool CanUpdate(string tableName) { return true; }
+        public bool CanUpdate(string tableName) { return false; }
         public bool CanDelete(string tableName) { return false; }
     }
 }
