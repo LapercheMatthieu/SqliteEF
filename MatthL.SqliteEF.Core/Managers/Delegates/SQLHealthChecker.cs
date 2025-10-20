@@ -1,7 +1,9 @@
-﻿using Microsoft.Data.Sqlite;
-using Microsoft.EntityFrameworkCore;
+﻿using MatthL.ResultLogger.Core.Models;
 using MatthL.SqliteEF.Core.Enums;
 using MatthL.SqliteEF.Core.Models;
+using MatthL.SqliteEF.Core.Tools;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -22,11 +24,15 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
 
     internal class SQLHealthChecker
     {
-        private SQLConnectionManager SQLConnectionManager { get; set; }
+        private readonly IDbContextFactory<RootDbContext> _contextFactory;
+        private readonly SQLConnectionManager _connectionManager;
 
-        public SQLHealthChecker(SQLConnectionManager _SQLConnectionManager)
+        public SQLHealthChecker(
+            IDbContextFactory<RootDbContext> contextFactory,
+            SQLConnectionManager connectionManager)
         {
-            SQLConnectionManager = _SQLConnectionManager;
+            _contextFactory = contextFactory ?? throw new ArgumentNullException(nameof(contextFactory));
+            _connectionManager = connectionManager ?? throw new ArgumentNullException(nameof(connectionManager));
         }
 
         /// <summary>
@@ -39,12 +45,12 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
             try
             {
                 // État de base
-                details["state"] = SQLConnectionManager.CurrentState.ToString();
-                details["isConnected"] = SQLConnectionManager.IsConnected;
-                details["lastActivity"] = SQLConnectionManager.LastActivityTime?.ToString("O") ?? "Never";
-                details["lastConnection"] = SQLConnectionManager.LastConnectionTime?.ToString("O") ?? "Never";
+                details["state"] = _connectionManager.CurrentState.ToString();
+                details["isConnected"] = _connectionManager.IsConnected;
+                details["lastActivity"] = _connectionManager.LastActivityTime?.ToString("O") ?? "Never";
+                details["lastConnection"] = _connectionManager.LastConnectionTime?.ToString("O") ?? "Never";
 
-                if (!SQLConnectionManager.IsConnected)
+                if (!_connectionManager.IsConnected)
                 {
                     return new HealthCheckResult
                     {
@@ -54,20 +60,11 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
                     };
                 }
 
-                if (SQLConnectionManager.DbContext == null)
-                {
-                    details["error"] = "DbContext is null";
-                    return new HealthCheckResult
-                    {
-                        Status = HealthStatus.Unhealthy,
-                        Description = "No database context",
-                        Details = details
-                    };
-                }
+                // Test de performance avec un context temporaire
+                await using var context = await _contextFactory.CreateDbContextAsync();
 
-                // Test de performance
                 var sw = Stopwatch.StartNew();
-                await SQLConnectionManager.DbContext.Database.ExecuteSqlRawAsync("SELECT 1");
+                await context.Database.ExecuteSqlRawAsync("SELECT 1");
                 sw.Stop();
 
                 details["pingMs"] = sw.ElapsedMilliseconds;
@@ -84,6 +81,35 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
                         var walInfo = new FileInfo($"{databasePath}-wal");
                         details["walSizeMB"] = Math.Round(walInfo.Length / (1024.0 * 1024.0), 2);
                     }
+
+                    if (File.Exists($"{databasePath}-shm"))
+                    {
+                        var shmInfo = new FileInfo($"{databasePath}-shm");
+                        details["shmSizeMB"] = Math.Round(shmInfo.Length / (1024.0 * 1024.0), 2);
+                    }
+
+                    // Vérifier l'espace disque disponible
+                    try
+                    {
+                        var driveInfo = new DriveInfo(Path.GetPathRoot(databasePath));
+                        details["freeSpaceGB"] = Math.Round(driveInfo.AvailableFreeSpace / (1024.0 * 1024.0 * 1024.0), 2);
+                        details["totalSpaceGB"] = Math.Round(driveInfo.TotalSize / (1024.0 * 1024.0 * 1024.0), 2);
+                    }
+                    catch
+                    {
+                        // Ignorer les erreurs de lecture du disque
+                    }
+                }
+
+                // Vérifier l'intégrité de la base de données
+                try
+                {
+                    var integrityCheck = await CheckDatabaseIntegrityAsync(context);
+                    details["integrityCheck"] = integrityCheck ? "OK" : "FAILED";
+                }
+                catch (Exception ex)
+                {
+                    details["integrityCheck"] = $"ERROR: {ex.Message}";
                 }
 
                 // Déterminer le statut
@@ -101,7 +127,7 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
                     description = "Database operational";
                 }
 
-                SQLConnectionManager.UpdateActivity();
+                _connectionManager.UpdateActivity();
 
                 return new HealthCheckResult
                 {
@@ -118,7 +144,7 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
                 // Marquer comme corrompu si c'est une erreur de corruption
                 if (sqlEx.SqliteErrorCode == 11) // SQLITE_CORRUPT
                 {
-                    await SQLConnectionManager.ChangeStateAsync(ConnectionState.Corrupted);
+                    await _connectionManager.ChangeStateAsync(ConnectionState.Corrupted);
                 }
 
                 return new HealthCheckResult
@@ -140,5 +166,176 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
                 };
             }
         }
+
+        /// <summary>
+        /// Vérifie l'intégrité de la base de données
+        /// </summary>
+        private async Task<bool> CheckDatabaseIntegrityAsync(RootDbContext context)
+        {
+            try
+            {
+                var connection = context.Database.GetDbConnection();
+                await using var command = connection.CreateCommand();
+                command.CommandText = "PRAGMA integrity_check;";
+
+                var result = await command.ExecuteScalarAsync();
+                return result?.ToString() == "ok";
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Effectue un health check rapide (ping uniquement)
+        /// </summary>
+        public async Task<HealthCheckResult> QuickHealthCheckAsync()
+        {
+            var details = new Dictionary<string, object>
+            {
+                ["state"] = _connectionManager.CurrentState.ToString(),
+                ["isConnected"] = _connectionManager.IsConnected
+            };
+
+            try
+            {
+                if (!_connectionManager.IsConnected)
+                {
+                    return new HealthCheckResult
+                    {
+                        Status = HealthStatus.Unhealthy,
+                        Description = "Database disconnected",
+                        Details = details
+                    };
+                }
+
+                await using var context = await _contextFactory.CreateDbContextAsync();
+
+                var sw = Stopwatch.StartNew();
+                await context.Database.ExecuteSqlRawAsync("SELECT 1");
+                sw.Stop();
+
+                details["pingMs"] = sw.ElapsedMilliseconds;
+
+                var status = sw.ElapsedMilliseconds > 1000 ? HealthStatus.Degraded : HealthStatus.Healthy;
+                var description = sw.ElapsedMilliseconds > 1000 ? "Slow response" : "OK";
+
+                return new HealthCheckResult
+                {
+                    Status = status,
+                    Description = description,
+                    Details = details
+                };
+            }
+            catch (Exception ex)
+            {
+                details["error"] = ex.Message;
+
+                return new HealthCheckResult
+                {
+                    Status = HealthStatus.Unhealthy,
+                    Description = "Quick check failed",
+                    Details = details
+                };
+            }
+        }
+
+        /// <summary>
+        /// Obtient des statistiques sur la base de données
+        /// </summary>
+        public async Task<Result<DatabaseStatistics>> GetDatabaseStatisticsAsync(string databasePath)
+        {
+            try
+            {
+                if (!_connectionManager.IsConnected)
+                    return Result<DatabaseStatistics>.Failure("Database not connected");
+
+                await using var context = await _contextFactory.CreateDbContextAsync();
+
+                var stats = new DatabaseStatistics();
+
+                // Page count
+                stats.PageCount = await GetPragmaIntValueAsync(context, "page_count");
+
+                // Page size
+                stats.PageSize = await GetPragmaIntValueAsync(context, "page_size");
+
+                // Free pages
+                stats.FreePageCount = await GetPragmaIntValueAsync(context, "freelist_count");
+
+                // Calculate sizes
+                stats.TotalSizeBytes = stats.PageCount * stats.PageSize;
+                stats.FreeSizeBytes = stats.FreePageCount * stats.PageSize;
+                stats.UsedSizeBytes = stats.TotalSizeBytes - stats.FreeSizeBytes;
+
+                // File size (if not in-memory)
+                if (!string.IsNullOrEmpty(databasePath) && File.Exists(databasePath))
+                {
+                    var fileInfo = new FileInfo(databasePath);
+                    stats.FileSizeBytes = fileInfo.Length;
+
+                    // WAL file
+                    if (File.Exists($"{databasePath}-wal"))
+                    {
+                        var walInfo = new FileInfo($"{databasePath}-wal");
+                        stats.WalSizeBytes = walInfo.Length;
+                    }
+                }
+
+                // Get table count
+                var connection = context.Database.GetDbConnection();
+                await using var command = connection.CreateCommand();
+                command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'";
+                var tableCount = await command.ExecuteScalarAsync();
+                stats.TableCount = Convert.ToInt32(tableCount);
+
+                return Result<DatabaseStatistics>.Success(stats);
+            }
+            catch (Exception ex)
+            {
+                return Result<DatabaseStatistics>.Failure($"Failed to get database statistics: {ex.Message}");
+            }
+        }
+
+        private async Task<long> GetPragmaIntValueAsync(RootDbContext context, string pragmaName)
+        {
+            try
+            {
+                var connection = context.Database.GetDbConnection();
+                await using var command = connection.CreateCommand();
+                command.CommandText = $"PRAGMA {pragmaName};";
+
+                var result = await command.ExecuteScalarAsync();
+                return Convert.ToInt64(result);
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Statistiques de la base de données
+    /// </summary>
+    public class DatabaseStatistics
+    {
+        public long PageCount { get; set; }
+        public long PageSize { get; set; }
+        public long FreePageCount { get; set; }
+        public long TotalSizeBytes { get; set; }
+        public long UsedSizeBytes { get; set; }
+        public long FreeSizeBytes { get; set; }
+        public long FileSizeBytes { get; set; }
+        public long WalSizeBytes { get; set; }
+        public int TableCount { get; set; }
+
+        public string TotalSizeString => TotalSizeBytes.ToFileSizeString();
+        public string UsedSizeString => UsedSizeBytes.ToFileSizeString();
+        public string FreeSizeString => FreeSizeBytes.ToFileSizeString();
+        public string FileSizeString => FileSizeBytes.ToFileSizeString();
+        public string WalSizeString => WalSizeBytes.ToFileSizeString();
+        public double UsagePercentage => TotalSizeBytes > 0 ? Math.Round((UsedSizeBytes / (double)TotalSizeBytes) * 100, 2) : 0;
     }
 }

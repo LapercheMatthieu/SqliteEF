@@ -11,15 +11,17 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
 {
     public class SQLConnectionManager
     {
-        private RootDbContext _dbContext;
+        private readonly IDbContextFactory<RootDbContext> _contextFactory;
         private ConnectionState _connectionState = ConnectionState.Disconnected;
         private readonly SemaphoreSlim _stateLock = new(1, 1);
-        public DateTime? LastConnectionTime { get;set; }
-        public DateTime? LastActivityTime { get;set; }
+        private SqliteConnection _persistentConnection;
+        private string _databasePath;
+
+        public DateTime? LastConnectionTime { get; set; }
+        public DateTime? LastActivityTime { get; set; }
 
         // Événement pour notifier les changements d'état
         public event EventHandler<ConnectionState> ConnectionStateChanged;
-        public RootDbContext DbContext => _dbContext;
 
         // Propriétés publiques thread-safe
         public ConnectionState CurrentState
@@ -39,27 +41,18 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
         }
 
         public bool IsConnected => CurrentState == ConnectionState.Connected;
-        
-        public SQLConnectionManager(RootDbContext dbContext)
+
+        public SQLConnectionManager(IDbContextFactory<RootDbContext> contextFactory)
         {
-            _dbContext = dbContext;
+            _contextFactory = contextFactory ?? throw new ArgumentNullException(nameof(contextFactory));
         }
 
         /// <summary>
-        /// Met à jour le contexte de base de données (appelé par SQLManager lors d'un refresh)
+        /// Met à jour le chemin de la base de données
         /// </summary>
-        public async Task UpdateContext(RootDbContext newContext)
+        public void SetDatabasePath(string databasePath)
         {
-            if(_connectionState == ConnectionState.Connected)
-            {
-                await DisconnectAsync();
-            }
-
-            _dbContext = newContext;
-            // Reset de l'état car on a un nouveau contexte
-            _ = ChangeStateAsync(ConnectionState.Disconnected);
-            LastActivityTime = null;
-            LastConnectionTime = null;
+            _databasePath = databasePath;
         }
 
         /// <summary>
@@ -108,18 +101,24 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
 
                 await ChangeStateAsync(ConnectionState.Connecting);
 
-                if (_dbContext == null)
-                {
-                    await ChangeStateAsync(ConnectionState.Disconnected);
-                    return Result.Failure("DbContext is null, need to refresh context");
-                }
-
-                await _dbContext.Database.OpenConnectionAsync();
+                // Créer un context pour tester et configurer la connexion
+                await using var context = await _contextFactory.CreateDbContextAsync();
 
                 // Test de connexion
-                await _dbContext.Database.ExecuteSqlRawAsync("SELECT 1");
+                var canConnect = await context.Database.CanConnectAsync();
+                if (!canConnect)
+                {
+                    await ChangeStateAsync(ConnectionState.Disconnected);
+                    return Result.Failure("Cannot connect to database");
+                }
 
-                await ConfigureConcurrentAccessAsync();
+                await context.Database.OpenConnectionAsync();
+
+                // Test avec une requête simple
+                await context.Database.ExecuteSqlRawAsync("SELECT 1");
+
+                // Configurer l'accès concurrent
+                await ConfigureConcurrentAccessAsync(context);
 
                 await ChangeStateAsync(ConnectionState.Connected);
                 return Result.Success("Connected successfully with concurrent access enabled");
@@ -148,21 +147,28 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
                     return Result.Success("Already disconnected");
                 }
 
-                if (_dbContext != null)
-                {
-                    // Optimisations avant fermeture
-                    try
-                    {
-                        await _dbContext.Database.ExecuteSqlRawAsync("PRAGMA wal_checkpoint(TRUNCATE)");
-                        await _dbContext.Database.ExecuteSqlRawAsync("PRAGMA optimize");
-                    }
-                    catch (Exception ex)
-                    {
-                        // Log mais ne pas faire échouer la déconnexion
-                        Result.Failure($"Warning during optimization: {ex.Message}");
-                    }
+                await using var context = await _contextFactory.CreateDbContextAsync();
 
-                    await _dbContext.Database.CloseConnectionAsync();
+                // Optimisations avant fermeture
+                try
+                {
+                    await context.Database.ExecuteSqlRawAsync("PRAGMA wal_checkpoint(TRUNCATE)");
+                    await context.Database.ExecuteSqlRawAsync("PRAGMA optimize");
+                }
+                catch (Exception ex)
+                {
+                    // Log mais ne pas faire échouer la déconnexion
+                    Console.WriteLine($"Warning during optimization: {ex.Message}");
+                }
+
+                await context.Database.CloseConnectionAsync();
+
+                // Fermer la connexion persistante si elle existe
+                if (_persistentConnection != null)
+                {
+                    await _persistentConnection.CloseAsync();
+                    await _persistentConnection.DisposeAsync();
+                    _persistentConnection = null;
                 }
 
                 await ChangeStateAsync(ConnectionState.Disconnected);
@@ -182,11 +188,13 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
         {
             try
             {
-                if (_dbContext == null || !IsConnected)
+                if (!IsConnected)
                     return false;
 
+                await using var context = await _contextFactory.CreateDbContextAsync();
+
                 // Test simple de connexion
-                var canConnect = await _dbContext.Database.CanConnectAsync();
+                var canConnect = await context.Database.CanConnectAsync();
 
                 if (!canConnect)
                 {
@@ -195,7 +203,7 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
                 }
 
                 // Test plus approfondi avec une requête
-                await _dbContext.Database.ExecuteSqlRawAsync("SELECT 1");
+                await context.Database.ExecuteSqlRawAsync("SELECT 1");
 
                 UpdateActivity();
                 return true;
@@ -221,79 +229,20 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
         }
 
         /// <summary>
-        /// Exécute une transaction
-        /// </summary>
-        public async Task<Result> ExecuteInTransactionAsync(Func<Task> operations)
-        {
-            if (!IsConnected)
-            {
-                return Result.Failure("Not connected to database");
-            }
-
-            if (_dbContext == null)
-            {
-                return Result.Failure("DbContext is null");
-            }
-
-            using var transaction = await _dbContext.Database.BeginTransactionAsync();
-            try
-            {
-                await operations();
-                await transaction.CommitAsync();
-                UpdateActivity();
-                return Result.Success("Transaction completed");
-            }
-            catch (Exception ex)
-            {
-                await transaction.RollbackAsync();
-                return Result.Failure($"Transaction rolled back: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Exécute une transaction avec résultat
-        /// </summary>
-        public async Task<Result<T>> ExecuteInTransactionAsync<T>(Func<Task<T>> operation)
-        {
-            if (!IsConnected)
-            {
-                return Result<T>.Failure("Not connected to database");
-            }
-
-            if (_dbContext == null)
-            {
-                return Result<T>.Failure("DbContext is null");
-            }
-
-            using var transaction = await _dbContext.Database.BeginTransactionAsync();
-            try
-            {
-                var result = await operation();
-                await transaction.CommitAsync();
-                UpdateActivity();
-                return Result<T>.Success(result);
-            }
-            catch (Exception ex)
-            {
-                await transaction.RollbackAsync();
-                return Result<T>.Failure($"Transaction rolled back: {ex.Message}");
-            }
-        }
-
-        /// <summary>
         /// Flush les données en attente
         /// </summary>
         public async Task<Result> FlushAsync()
         {
             try
             {
-                if (_dbContext != null && IsConnected)
-                {
-                    await _dbContext.Database.ExecuteSqlRawAsync("PRAGMA wal_checkpoint(FULL)");
-                    UpdateActivity();
-                    return Result.Success("Flush completed");
-                }
-                return Result.Failure("Not connected or context is null");
+                if (!IsConnected)
+                    return Result.Failure("Not connected to database");
+
+                await using var context = await _contextFactory.CreateDbContextAsync();
+
+                await context.Database.ExecuteSqlRawAsync("PRAGMA wal_checkpoint(FULL)");
+                UpdateActivity();
+                return Result.Success("Flush completed");
             }
             catch (Exception ex)
             {
@@ -304,36 +253,36 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
         /// <summary>
         /// Configure SQLite for concurrent access (WAL mode + optimisations)
         /// </summary>
-        private async Task ConfigureConcurrentAccessAsync()
+        private async Task ConfigureConcurrentAccessAsync(RootDbContext context)
         {
             try
             {
                 // Activer le mode WAL (Write-Ahead Logging) pour permettre les lectures concurrentes
-                await _dbContext.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
+                await context.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
 
                 // Configurer le busy timeout (attendre jusqu'à 5 secondes si la DB est verrouillée)
-                await _dbContext.Database.ExecuteSqlRawAsync("PRAGMA busy_timeout=5000;");
+                await context.Database.ExecuteSqlRawAsync("PRAGMA busy_timeout=5000;");
 
                 // Activer le cache partagé pour améliorer les performances avec plusieurs connexions
-                await _dbContext.Database.ExecuteSqlRawAsync("PRAGMA cache_size=-20000;"); // 20MB de cache
+                await context.Database.ExecuteSqlRawAsync("PRAGMA cache_size=-20000;"); // 20MB de cache
 
                 // Optimisation de la synchronisation (NORMAL = bon compromis perf/sécurité)
-                await _dbContext.Database.ExecuteSqlRawAsync("PRAGMA synchronous=NORMAL;");
+                await context.Database.ExecuteSqlRawAsync("PRAGMA synchronous=NORMAL;");
 
                 // Taille de page optimale pour les performances
-                await _dbContext.Database.ExecuteSqlRawAsync("PRAGMA page_size=4096;");
+                await context.Database.ExecuteSqlRawAsync("PRAGMA page_size=4096;");
 
                 // Activer les foreign keys
-                await _dbContext.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys=ON;");
+                await context.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys=ON;");
 
                 // Mode de verrouillage pour permettre plus de concurrence
-                await _dbContext.Database.ExecuteSqlRawAsync("PRAGMA locking_mode=NORMAL;");
+                await context.Database.ExecuteSqlRawAsync("PRAGMA locking_mode=NORMAL;");
             }
             catch (Exception ex)
             {
                 // Log l'erreur mais ne pas faire échouer la connexion
                 // La plupart de ces PRAGMAs sont des optimisations
-                Result.Failure($"Warning: Some concurrent access configurations failed: {ex.Message}");
+                Console.WriteLine($"Warning: Some concurrent access configurations failed: {ex.Message}");
             }
         }
 
@@ -344,30 +293,30 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
         {
             try
             {
-                if (_dbContext == null || !IsConnected)
+                if (!IsConnected)
                     return Result<Dictionary<string, string>>.Failure("Not connected to database");
+
+                await using var context = await _contextFactory.CreateDbContextAsync();
 
                 var config = new Dictionary<string, string>();
 
                 // Vérifier le mode journal
-                var journalMode = await ExecutePragmaQueryAsync("journal_mode");
-                config["journal_mode"] = journalMode;
+                config["journal_mode"] = await ExecutePragmaQueryAsync(context, "journal_mode");
 
                 // Vérifier le busy timeout
-                var busyTimeout = await ExecutePragmaQueryAsync("busy_timeout");
-                config["busy_timeout"] = busyTimeout;
+                config["busy_timeout"] = await ExecutePragmaQueryAsync(context, "busy_timeout");
 
                 // Vérifier le cache size
-                var cacheSize = await ExecutePragmaQueryAsync("cache_size");
-                config["cache_size"] = cacheSize;
+                config["cache_size"] = await ExecutePragmaQueryAsync(context, "cache_size");
 
                 // Vérifier synchronous
-                var synchronous = await ExecutePragmaQueryAsync("synchronous");
-                config["synchronous"] = synchronous;
+                config["synchronous"] = await ExecutePragmaQueryAsync(context, "synchronous");
 
                 // Vérifier locking mode
-                var lockingMode = await ExecutePragmaQueryAsync("locking_mode");
-                config["locking_mode"] = lockingMode;
+                config["locking_mode"] = await ExecutePragmaQueryAsync(context, "locking_mode");
+
+                // Vérifier foreign keys
+                config["foreign_keys"] = await ExecutePragmaQueryAsync(context, "foreign_keys");
 
                 return Result<Dictionary<string, string>>.Success(config);
             }
@@ -377,13 +326,15 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
             }
         }
 
-        // MÉTHODE HELPER pour exécuter les requêtes PRAGMA
-        private async Task<string> ExecutePragmaQueryAsync(string pragmaName)
+        /// <summary>
+        /// MÉTHODE HELPER pour exécuter les requêtes PRAGMA
+        /// </summary>
+        private async Task<string> ExecutePragmaQueryAsync(RootDbContext context, string pragmaName)
         {
             try
             {
-                var connection = _dbContext.Database.GetDbConnection();
-                using var command = connection.CreateCommand();
+                var connection = context.Database.GetDbConnection();
+                await using var command = connection.CreateCommand();
                 command.CommandText = $"PRAGMA {pragmaName};";
 
                 var result = await command.ExecuteScalarAsync();
@@ -394,7 +345,29 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
                 return "error";
             }
         }
+
+        /// <summary>
+        /// Execute a raw SQL command
+        /// </summary>
+        public async Task<Result> ExecuteRawSqlAsync(string sql)
+        {
+            try
+            {
+                if (!IsConnected)
+                    return Result.Failure("Not connected to database");
+
+                await using var context = await _contextFactory.CreateDbContextAsync();
+
+                await context.Database.ExecuteSqlRawAsync(sql);
+                UpdateActivity();
+                return Result.Success("SQL executed successfully");
+            }
+            catch (Exception ex)
+            {
+                return Result.Failure($"SQL execution failed: {ex.Message}");
+            }
+        }
     }
 
-    
+
 }

@@ -1,4 +1,5 @@
 ﻿using CommunityToolkit.Mvvm.DependencyInjection;
+using MatthL.SqliteEF.Core.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -9,9 +10,6 @@ namespace MatthL.SqliteEF.Core.Authorizations
 {
     public interface IAuthorizationManager
     {
-        public bool CanCreate(string tableName);
-        public bool CanRead(string tableName);
-        public bool CanUpdate(string tableName);
-        public bool CanDelete(string tableName);
+        IServiceAuthorization GetAuthorization<T>() where T : class, IBaseEntity;
     }
 }
