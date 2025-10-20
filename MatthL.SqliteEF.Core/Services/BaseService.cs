@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore;
 using MatthL.SqliteEF.Core.Models;
 using MatthL.SqliteEF.Core.Authorizations;
 using MatthL.ResultLogger.Core.Models;
+using System.Diagnostics;
+using System.Threading.Tasks;
 
 namespace MatthL.SqliteEF.Core.Services
 {
@@ -65,7 +67,8 @@ namespace MatthL.SqliteEF.Core.Services
 
         protected virtual IQueryable<T> GetQueryWithNavigations()
         {
-            return _dbContext.Set<T>().IncludeAllNavigations(_dbContext);
+                return _dbContext.Set<T>().IncludeAllNavigations(_dbContext);
+            
         }
 
         #endregion
@@ -336,10 +339,12 @@ namespace MatthL.SqliteEF.Core.Services
         {
             try
             {
+                await _syncLock.WaitAsync();
                 if (!authorizationManager.CanRead(GetTableName()))
                 {
                     return Result<T>.Failure($"Unauthorized to read the table {GetTableName()}");
                 }
+
                 var item = await GetQueryWithNavigations().FirstOrDefaultAsync();
                 if (item == null) return Result<T>.Failure($"the item {id} could not be found");
                 return Result<T>.Success(item);
@@ -349,6 +354,7 @@ namespace MatthL.SqliteEF.Core.Services
                 if (ex.InnerException != null) return Result<T>.Failure($"Failed to get entity: {ex.InnerException.Message}");
                 return Result<T>.Failure($"Failed to get entity: {ex.Message}");
             }
+            finally { _syncLock.Release(); }
         }
 
         public async Task<Result<bool>> AnyExist()

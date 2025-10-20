@@ -4,7 +4,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Win32;
 using MatthL.SqliteEF.Core.Authorizations;
 using MatthL.SqliteEF.Core.Enums;
-using MatthL.SqliteEF.Core.Managers.Delegates;
 using MatthL.SqliteEF.Core.Managers;
 using MatthL.SqliteEF.Core.Models;
 using MatthL.SqliteEF.Views.Converters;

@@ -1,15 +1,17 @@
-﻿using Microsoft.Data.Sqlite;
+﻿using MatthL.ResultLogger.Core.Models;
 using MatthL.SqliteEF.Core.Authorizations;
 using MatthL.SqliteEF.Core.Enums;
 using MatthL.SqliteEF.Core.Managers.Delegates;
 using MatthL.SqliteEF.Core.Models;
 using MatthL.SqliteEF.Core.Services;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using System.Collections.Concurrent;
-using MatthL.ResultLogger.Core.Models;
+using System.Linq.Expressions;
 
 namespace MatthL.SqliteEF.Core.Managers
 {
-    public class SQLManager
+    public partial class SQLManager
     {
         private readonly ConcurrentDictionary<Type, object> _services;
         private RootDbContext _dbContext;
@@ -17,10 +19,15 @@ namespace MatthL.SqliteEF.Core.Managers
         private readonly IAuthorizationManager _authorizationManager;
 
         // Gestionnaires délégués
-        private readonly SQLCrudOperations _crudOperations;
         private readonly SQLConnectionManager _connectionManager;
         private readonly SQLDatabaseManager _databaseManager;
         private readonly SQLHealthChecker _healthChecker;
+
+        public SQLConnectionManager ConnectionManager => _connectionManager;
+        /// <summary>
+        /// Access to the db context to by pass the functions, use it carefully
+        /// </summary>
+        public RootDbContext DbContext => _dbContext;
 
         // Propriétés déléguées pour l'état de connexion
         public ConnectionState CurrentState => _connectionManager.CurrentState;
@@ -43,7 +50,6 @@ namespace MatthL.SqliteEF.Core.Managers
             // Initialiser les gestionnaires
             _connectionManager = new SQLConnectionManager(_dbContext);
             _databaseManager = new SQLDatabaseManager(_dbContext, _connectionManager, folderPath, fileName );
-            _crudOperations = new SQLCrudOperations(this);
             _healthChecker = new SQLHealthChecker(_connectionManager);
 
             _databaseManager.SetPaths(folderPath, fileName);
@@ -58,7 +64,6 @@ namespace MatthL.SqliteEF.Core.Managers
             // Initialiser les gestionnaires pour in-memory
             _connectionManager = new SQLConnectionManager(_dbContext);
             _databaseManager = new SQLDatabaseManager(_dbContext, _connectionManager); // Sans paths = in-memory
-            _crudOperations = new SQLCrudOperations(this);
             _healthChecker = new SQLHealthChecker(_connectionManager);
         }
         // Propriétés publiques
@@ -72,54 +77,15 @@ namespace MatthL.SqliteEF.Core.Managers
         {
             var entityType = typeof(T);
 
-            if (!_services.TryGetValue(entityType, out var service))
-            {
-                service = new BaseService<T>(_dbContext, _authorizationManager);
-                _services[entityType] = service;
-            }
-
+            /* if (!_services.TryGetValue(entityType, out var service))
+             {
+                 service = new BaseService<T>(_dbContextbuilder.Invoke(), _authorizationManager);
+                 _services[entityType] = service;
+             }*/
+            var service = new BaseService<T>(_dbContextbuilder.Invoke(), _authorizationManager);
+           // _services[entityType] = service;
             return Result<IService<T>>.Success((IService<T>)service);
         }
-
-        #region Délégation des opérations CRUD
-
-        public Task<Result> AddAsync<T>(T entity) where T : class, IBaseEntity
-            => _crudOperations.AddAsync(entity);
-
-        public Task<Result> UpdateAsync<T>(T entity) where T : class, IBaseEntity
-            => _crudOperations.UpdateAsync(entity);
-
-        public Task<Result> DeleteAsync<T>(T entity) where T : class, IBaseEntity
-            => _crudOperations.DeleteAsync(entity);
-
-        public Task<Result<List<T>>> GetAllAsync<T>() where T : class, IBaseEntity
-            => _crudOperations.GetAllAsync<T>();
-
-        public Task<Result<T>> GetByIdAsync<T>(int id) where T : class, IBaseEntity
-            => _crudOperations.GetByIdAsync<T>(id);
-
-        public Task<Result> AddRangeAsync<T>(IEnumerable<T> entities) where T : class, IBaseEntity
-            => _crudOperations.AddRangeAsync(entities);
-
-        public Task<Result> UpdateRangeAsync<T>(IEnumerable<T> entities) where T : class, IBaseEntity
-            => _crudOperations.UpdateRangeAsync(entities);
-
-        public Task<Result> DeleteRangeAsync<T>(IEnumerable<T> entities) where T : class, IBaseEntity
-            => _crudOperations.DeleteRangeAsync(entities);
-
-        public Task<Result> DeleteAllAsync<T>() where T : class, IBaseEntity
-            => _crudOperations.DeleteAllAsync<T>();
-
-        public Task<Result> AddOrUpdateAsync<T>(T entity) where T : class, IBaseEntity
-            => _crudOperations.AddOrUpdateAsync(entity);
-
-        public Task<Result<bool>> AnyExistAsync<T>() where T : class, IBaseEntity
-            => _crudOperations.AnyExistAsync<T>();
-
-        public Result<bool> IsSavable<T>(T entity) where T : class, IBaseEntity
-            => _crudOperations.IsSavable(entity);
-
-        #endregion
 
         #region Délégation Database Management
 
@@ -194,8 +160,177 @@ namespace MatthL.SqliteEF.Core.Managers
         #endregion
 
 
+        // 2. Added : New methods for queries
+        #region Query Operations (éviter de charger tout en mémoire)
+
         /// <summary>
-        /// Rafraîchit le contexte de base de données
+        /// Get a Queryable for custom request
+        /// </summary>
+        public Result<IQueryable<T>> Query<T>() where T : class, IBaseEntity
+        {
+            try
+            {
+                if (_dbContext == null)
+                    return Result<IQueryable<T>>.Failure("DbContext is null");
+
+                if (!IsConnected)
+                    return Result<IQueryable<T>>.Failure("Not connected to database");
+
+                var query = _dbContext.Set<T>().AsQueryable();
+                return Result<IQueryable<T>>.Success(query);
+            }
+            catch (Exception ex)
+            {
+                return Result<IQueryable<T>>.Failure($"Failed to create query: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// GEt a IQueryable as not tracking for read only (more performance)
+        /// </summary>
+        public Result<IQueryable<T>> QueryNoTracking<T>() where T : class, IBaseEntity
+        {
+            try
+            {
+                if (_dbContext == null)
+                    return Result<IQueryable<T>>.Failure("DbContext is null");
+
+                if (!IsConnected)
+                    return Result<IQueryable<T>>.Failure("Not connected to database");
+
+                var query = _dbContext.Set<T>().AsNoTracking().AsQueryable();
+                return Result<IQueryable<T>>.Success(query);
+            }
+            catch (Exception ex)
+            {
+                return Result<IQueryable<T>>.Failure($"Failed to create query: {ex.Message}");
+            }
+        }
+
+        
+
+        /// <summary>
+        /// paged query
+        /// </summary>
+        public async Task<Result<List<T>>> GetPagedAsync<T>(int pageNumber, int pageSize, Expression<Func<T, bool>> predicate = null) where T : class, IBaseEntity
+        {
+            try
+            {
+                if (_dbContext == null)
+                    return Result<List<T>>.Failure("DbContext is null");
+
+                if (!IsConnected)
+                    return Result<List<T>>.Failure("Not connected to database");
+
+                if (pageNumber < 1) pageNumber = 1;
+                if (pageSize < 1) pageSize = 10;
+
+                var query = _dbContext.Set<T>().AsQueryable();
+
+                if (predicate != null)
+                    query = query.Where(predicate);
+
+                var results = await query
+                    .Skip((pageNumber - 1) * pageSize)
+                    .Take(pageSize)
+                    .ToListAsync();
+
+                _connectionManager.UpdateActivity();
+                return Result<List<T>>.Success(results);
+            }
+            catch (Exception ex)
+            {
+                return Result<List<T>>.Failure($"Paged query failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Get numbers of element with a filter
+        /// </summary>
+        public async Task<Result<int>> CountAsync<T>(Expression<Func<T, bool>> predicate = null) where T : class, IBaseEntity
+        {
+            try
+            {
+                if (_dbContext == null)
+                    return Result<int>.Failure("DbContext is null");
+
+                if (!IsConnected)
+                    return Result<int>.Failure("Not connected to database");
+
+                var query = _dbContext.Set<T>().AsQueryable();
+
+                if (predicate != null)
+                    query = query.Where(predicate);
+
+                var count = await query.CountAsync();
+
+                _connectionManager.UpdateActivity();
+                return Result<int>.Success(count);
+            }
+            catch (Exception ex)
+            {
+                return Result<int>.Failure($"Count query failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// get the first element of a filter
+        /// </summary>
+        public async Task<Result<T>> FirstOrDefaultAsync<T>(Expression<Func<T, bool>> predicate) where T : class, IBaseEntity
+        {
+            try
+            {
+                if (_dbContext == null)
+                    return Result<T>.Failure("DbContext is null");
+
+                if (!IsConnected)
+                    return Result<T>.Failure("Not connected to database");
+
+                var result = await _dbContext.Set<T>()
+                    .FirstOrDefaultAsync(predicate);
+
+                _connectionManager.UpdateActivity();
+
+                if (result == null)
+                    return Result<T>.Failure("No entity found matching the criteria");
+
+                return Result<T>.Success(result);
+            }
+            catch (Exception ex)
+            {
+                return Result<T>.Failure($"Query failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Verify existance with a filter
+        /// </summary>
+        public async Task<Result<bool>> AnyAsync<T>(Expression<Func<T, bool>> predicate) where T : class, IBaseEntity
+        {
+            try
+            {
+                if (_dbContext == null)
+                    return Result<bool>.Failure("DbContext is null");
+
+                if (!IsConnected)
+                    return Result<bool>.Failure("Not connected to database");
+
+                var exists = await _dbContext.Set<T>()
+                    .AnyAsync(predicate);
+
+                _connectionManager.UpdateActivity();
+                return Result<bool>.Success(exists);
+            }
+            catch (Exception ex)
+            {
+                return Result<bool>.Failure($"Query failed: {ex.Message}");
+            }
+        }
+
+        #endregion
+
+        /// <summary>
+        /// REfresh database context
         /// </summary>
         public async Task<Result> RefreshContextAsync()
         {
@@ -212,7 +347,7 @@ namespace MatthL.SqliteEF.Core.Managers
                 _dbContext = _dbContextbuilder.Invoke();
 
                 // Mettre à jour dans tous les gestionnaires
-                _connectionManager.UpdateContext(_dbContext);
+                await _connectionManager.UpdateContext(_dbContext);
                 _databaseManager.UpdateContext(_dbContext);
 
                 // Réinitialiser les services

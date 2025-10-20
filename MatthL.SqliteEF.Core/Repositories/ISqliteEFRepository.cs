@@ -8,6 +8,9 @@ namespace MatthL.SqliteEF.Core.Repositories
 {
     public interface ISqliteEFRepository
     {
+        /// <summary>
+        /// This function will catch all observable Collections events and push them to the SQLManager
+        /// </summary>
         public void Initialize();
 
     }

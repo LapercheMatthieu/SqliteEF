@@ -137,13 +137,13 @@ namespace MatthL.SqliteEF.Tests
         }
 
         [Fact]
-        public void UpdateContext_ShouldResetState()
+        public async Task UpdateContext_ShouldResetState()
         {
             // Arrange
             var newContext = new TestDbContext();
 
             // Act
-            _connectionManager.UpdateContext(newContext);
+            await _connectionManager.UpdateContext(newContext);
 
             // Assert
             _connectionManager.CurrentState.Should().Be(ConnectionState.Disconnected);

@@ -4,11 +4,12 @@ using MatthL.SqliteEF.Core.Enums;
 using System.Runtime.CompilerServices;
 using MatthL.SqliteEF.Core.Models;
 using MatthL.ResultLogger.Core.Models;
+using System.Threading.Tasks;
 
 [assembly: InternalsVisibleTo("SQLiteManager.Tests")]
 namespace MatthL.SqliteEF.Core.Managers.Delegates
 {
-    internal class SQLConnectionManager
+    public class SQLConnectionManager
     {
         private RootDbContext _dbContext;
         private ConnectionState _connectionState = ConnectionState.Disconnected;
@@ -18,6 +19,7 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
 
         // Événement pour notifier les changements d'état
         public event EventHandler<ConnectionState> ConnectionStateChanged;
+        public RootDbContext DbContext => _dbContext;
 
         // Propriétés publiques thread-safe
         public ConnectionState CurrentState
@@ -37,7 +39,7 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
         }
 
         public bool IsConnected => CurrentState == ConnectionState.Connected;
-        public RootDbContext DbContext => _dbContext;
+        
         public SQLConnectionManager(RootDbContext dbContext)
         {
             _dbContext = dbContext;
@@ -46,8 +48,13 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
         /// <summary>
         /// Met à jour le contexte de base de données (appelé par SQLManager lors d'un refresh)
         /// </summary>
-        public void UpdateContext(RootDbContext newContext)
+        public async Task UpdateContext(RootDbContext newContext)
         {
+            if(_connectionState == ConnectionState.Connected)
+            {
+                await DisconnectAsync();
+            }
+
             _dbContext = newContext;
             // Reset de l'état car on a un nouveau contexte
             _ = ChangeStateAsync(ConnectionState.Disconnected);
@@ -112,8 +119,10 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
                 // Test de connexion
                 await _dbContext.Database.ExecuteSqlRawAsync("SELECT 1");
 
+                await ConfigureConcurrentAccessAsync();
+
                 await ChangeStateAsync(ConnectionState.Connected);
-                return Result.Success("Connected successfully");
+                return Result.Success("Connected successfully with concurrent access enabled");
             }
             catch (SqliteException sqlEx)
             {
@@ -289,6 +298,100 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
             catch (Exception ex)
             {
                 return Result.Failure($"Flush failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Configure SQLite for concurrent access (WAL mode + optimisations)
+        /// </summary>
+        private async Task ConfigureConcurrentAccessAsync()
+        {
+            try
+            {
+                // Activer le mode WAL (Write-Ahead Logging) pour permettre les lectures concurrentes
+                await _dbContext.Database.ExecuteSqlRawAsync("PRAGMA journal_mode=WAL;");
+
+                // Configurer le busy timeout (attendre jusqu'à 5 secondes si la DB est verrouillée)
+                await _dbContext.Database.ExecuteSqlRawAsync("PRAGMA busy_timeout=5000;");
+
+                // Activer le cache partagé pour améliorer les performances avec plusieurs connexions
+                await _dbContext.Database.ExecuteSqlRawAsync("PRAGMA cache_size=-20000;"); // 20MB de cache
+
+                // Optimisation de la synchronisation (NORMAL = bon compromis perf/sécurité)
+                await _dbContext.Database.ExecuteSqlRawAsync("PRAGMA synchronous=NORMAL;");
+
+                // Taille de page optimale pour les performances
+                await _dbContext.Database.ExecuteSqlRawAsync("PRAGMA page_size=4096;");
+
+                // Activer les foreign keys
+                await _dbContext.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys=ON;");
+
+                // Mode de verrouillage pour permettre plus de concurrence
+                await _dbContext.Database.ExecuteSqlRawAsync("PRAGMA locking_mode=NORMAL;");
+            }
+            catch (Exception ex)
+            {
+                // Log l'erreur mais ne pas faire échouer la connexion
+                // La plupart de ces PRAGMAs sont des optimisations
+                Result.Failure($"Warning: Some concurrent access configurations failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Verify Concurrent access configuration
+        /// </summary>
+        public async Task<Result<Dictionary<string, string>>> GetConcurrencyConfigAsync()
+        {
+            try
+            {
+                if (_dbContext == null || !IsConnected)
+                    return Result<Dictionary<string, string>>.Failure("Not connected to database");
+
+                var config = new Dictionary<string, string>();
+
+                // Vérifier le mode journal
+                var journalMode = await ExecutePragmaQueryAsync("journal_mode");
+                config["journal_mode"] = journalMode;
+
+                // Vérifier le busy timeout
+                var busyTimeout = await ExecutePragmaQueryAsync("busy_timeout");
+                config["busy_timeout"] = busyTimeout;
+
+                // Vérifier le cache size
+                var cacheSize = await ExecutePragmaQueryAsync("cache_size");
+                config["cache_size"] = cacheSize;
+
+                // Vérifier synchronous
+                var synchronous = await ExecutePragmaQueryAsync("synchronous");
+                config["synchronous"] = synchronous;
+
+                // Vérifier locking mode
+                var lockingMode = await ExecutePragmaQueryAsync("locking_mode");
+                config["locking_mode"] = lockingMode;
+
+                return Result<Dictionary<string, string>>.Success(config);
+            }
+            catch (Exception ex)
+            {
+                return Result<Dictionary<string, string>>.Failure($"Failed to get concurrency config: {ex.Message}");
+            }
+        }
+
+        // MÉTHODE HELPER pour exécuter les requêtes PRAGMA
+        private async Task<string> ExecutePragmaQueryAsync(string pragmaName)
+        {
+            try
+            {
+                var connection = _dbContext.Database.GetDbConnection();
+                using var command = connection.CreateCommand();
+                command.CommandText = $"PRAGMA {pragmaName};";
+
+                var result = await command.ExecuteScalarAsync();
+                return result?.ToString() ?? "unknown";
+            }
+            catch
+            {
+                return "error";
             }
         }
     }

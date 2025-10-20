@@ -1,4 +1,6 @@
-﻿using MatthL.SqliteEF.Core.Models;
+﻿using MatthL.ResultLogger.Core.Models;
+using MatthL.SqliteEF.Core.Managers;
+using MatthL.SqliteEF.Core.Models;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -18,13 +20,54 @@ namespace MatthL.SqliteEF.Core.Repositories
     public class RootSqliteEFRepository : ISqliteEFRepository
     {
         private List<ObservableCollection<IBaseEntity>> _subscribedCollections = new();
+        private SQLManager _SQLManager;
+        public RootSqliteEFRepository(SQLManager SQLManager)
+        {
+            _SQLManager = SQLManager;
+            Initialize();
+            SQLManager.ConnectionStateChanged += SQLManager_ConnectionStateChanged;
+        }
+
+
+        private void SQLManager_ConnectionStateChanged(object? sender, Enums.ConnectionState e)
+        {
+            if(e == Enums.ConnectionState.Connected)
+            {
+                UnsubscribeAll();
+                StartingRefreshStorage();
+            }
+        }
+        private void StartingRefreshStorage()
+        {
+            // Get all properties of the current instance
+            var properties = this.GetType().GetProperties(
+                BindingFlags.Public |
+                BindingFlags.NonPublic |
+                BindingFlags.Instance);
+
+            foreach (var property in properties)
+            {
+                // Check if property is ObservableCollection<T> where T : IBaseEntity
+                if (IsObservableCollectionOfBaseEntity(property.PropertyType))
+                {
+                    // Get the collection instance
+                    var collection = property.GetValue(this) as ObservableCollection<IBaseEntity>;
+
+                    if (collection != null)
+                    {
+                        // Subscribe to collection changes
+                 //       _SQLManager.GetAllAsync<>();
+                    }
+                }
+            }
+        }
         /// <summary>
         /// Reflexion on all ObservableCollection to subscibe to events
         /// </summary>
         public void Initialize()
         {
             // Unsubscribe from previous collections if any
-         /*   UnsubscribeAll();
+            UnsubscribeAll();
 
             // Get all properties of the current instance
             var properties = this.GetType().GetProperties(
@@ -38,7 +81,7 @@ namespace MatthL.SqliteEF.Core.Repositories
                 if (IsObservableCollectionOfBaseEntity(property.PropertyType))
                 {
                     // Get the collection instance
-                    var collection = property.GetValue(this) as INotifyCollectionChanged;
+                    var collection = property.GetValue(this) as ObservableCollection<IBaseEntity>;
 
                     if (collection != null)
                     {
@@ -47,11 +90,10 @@ namespace MatthL.SqliteEF.Core.Repositories
                         _subscribedCollections.Add(collection);
 
                         // Optional: Log or debug
-                        System.Diagnostics.Debug.WriteLine(
-                            $"Subscribed to ObservableCollection: {property.Name}");
+                        Result.Success($"Subscribed to ObservableCollection: {property.Name}",ResultLogger.Core.Enums.LogLevel.Info);
                     }
                 }
-            }*/
+            }
         }
 
         /// <summary>
@@ -87,45 +129,31 @@ namespace MatthL.SqliteEF.Core.Repositories
                 case NotifyCollectionChangedAction.Add:
                     if (e.NewItems != null)
                     {
-                        foreach (IBaseEntity item in e.NewItems)
-                        {
-                            // Handle added items
-                            OnItemAdded(item);
-                        }
+                        OnItemsAdded(e.NewItems as IList<IBaseEntity>);
                     }
                     break;
 
                 case NotifyCollectionChangedAction.Remove:
                     if (e.OldItems != null)
                     {
-                        foreach (IBaseEntity item in e.OldItems)
-                        {
-                            // Handle removed items
-                            OnItemRemoved(item);
-                        }
+                        OnItemsRemoved(e.OldItems as IList<IBaseEntity>);
                     }
                     break;
 
                 case NotifyCollectionChangedAction.Replace:
                     if (e.OldItems != null)
                     {
-                        foreach (IBaseEntity item in e.OldItems)
-                        {
-                            OnItemRemoved(item);
-                        }
+                        OnItemsRemoved(e.OldItems as IList<IBaseEntity>);
                     }
                     if (e.NewItems != null)
                     {
-                        foreach (IBaseEntity item in e.NewItems)
-                        {
-                            OnItemAdded(item);
-                        }
+                        OnItemsAdded(e.NewItems as IList<IBaseEntity>);
                     }
                     break;
 
                 case NotifyCollectionChangedAction.Reset:
                     // Handle clear operation
-                    OnCollectionReset();
+                    OnCollectionReset(sender);
                     break;
             }
         }
@@ -133,28 +161,33 @@ namespace MatthL.SqliteEF.Core.Repositories
         /// <summary>
         /// Virtual method can be overriden for other use
         /// </summary>
-        protected virtual void OnItemAdded(IBaseEntity item)
+        protected virtual async Task OnItemsAdded(IList<IBaseEntity> items)
         {
             // Override in derived class to handle item addition
-            // Example: Add to DbContext, etc.
+            await _SQLManager.AddRangeAsync(items);
         }
 
         /// <summary>
         /// Virtual method can be overriden for other use
         /// </summary>
-        protected virtual void OnItemRemoved(IBaseEntity item)
+        protected virtual async Task OnItemsRemoved(IList<IBaseEntity> items)
         {
             // Override in derived class to handle item removal
-            // Example: Remove from DbContext, etc.
+            await _SQLManager.DeleteRangeAsync(items);
         }
 
         /// <summary>
         /// Virtual method can be overriden for other use
         /// </summary>
-        protected virtual void OnCollectionReset()
+        protected virtual async Task OnCollectionReset(object? sender)
         {
             // Override in derived class to handle collection reset
-            // Example: Clear related entities in DbContext
+            var selectedCollection = _subscribedCollections.Where(p => sender == p).FirstOrDefault();
+            if(selectedCollection != null)
+            {
+                await _SQLManager.DeleteRangeAsync(selectedCollection);
+            }
+            
         }
 
         /// <summary>
