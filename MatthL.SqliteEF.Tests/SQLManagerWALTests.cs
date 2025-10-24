@@ -3,6 +3,7 @@ using MatthL.SqliteEF.Core.Authorizations;
 using MatthL.SqliteEF.Core.Enums;
 using MatthL.SqliteEF.Core.Managers;
 using MatthL.SqliteEF.Core.Managers.Delegates;
+using MatthL.SqliteEF.Core.Models;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
@@ -29,9 +30,7 @@ namespace MatthL.SqliteEF.Tests
             _testDbName = $"WALTestDb_{Guid.NewGuid()}";
             Directory.CreateDirectory(_testDbPath);
 
-            var contextFactory = new TestDbContextFactory();
-            _sqlManager = new SQLManager(
-                contextFactory,
+            _sqlManager = new SQLManager(p => new TestDbContext(p),
                 _testDbPath,
                 _testDbName,
                 ".db"
@@ -282,8 +281,9 @@ namespace MatthL.SqliteEF.Tests
             {
                 for (int i = 0; i < 10; i++)
                 {
+                    var randomValue = Random.Shared.Next(0, 10000);
                     var result = await _sqlManager.WhereAsync<TestEntity>(
-                        e => e.Value > Random.Shared.Next(0, 1000)
+                        e => e.Value > randomValue
                     );
                     if (!result.IsSuccess) return false;
                 }
@@ -586,8 +586,11 @@ namespace MatthL.SqliteEF.Tests
 
             var tasks = Enumerable.Range(1, 20).Select(_ => Task.Run(async () =>
             {
+                // ✅ Calculer le nombre aléatoire AVANT la requête
+                var randomValue = Random.Shared.Next(0, 10000);
+
                 var result = await _sqlManager.WhereAsync<TestEntity>(
-                    e => e.Value > Random.Shared.Next(0, 10000)
+                    e => e.Value > randomValue  // ✅ Maintenant c'est une constante
                 );
                 return result.IsSuccess;
             }));

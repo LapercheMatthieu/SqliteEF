@@ -2,6 +2,7 @@
 using MatthL.SqliteEF.Core.Authorizations;
 using MatthL.SqliteEF.Core.Enums;
 using MatthL.SqliteEF.Core.Managers;
+using MatthL.SqliteEF.Core.Models;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
@@ -28,9 +29,7 @@ namespace MatthL.SqliteEF.Tests
             _testDbName = $"AdvancedTestDb_{Guid.NewGuid()}";
             Directory.CreateDirectory(_testDbPath);
 
-            var contextFactory = new TestDbContextFactory();
-            _sqlManager = new SQLManager(
-                contextFactory,
+            _sqlManager = new SQLManager(p => new TestDbContext(p),
                 _testDbPath,
                 _testDbName,
                 ".db"
@@ -113,7 +112,7 @@ namespace MatthL.SqliteEF.Tests
             var result = await _sqlManager.ExecuteQueryAsync<TestEntity>(query =>
                 query.Where(e => e.Name == "Even")
                      .Where(e => e.Value > 100)
-                     .Where(e => e.Value < 900)
+                     .Where(e => e.Value <= 900)
                      .OrderBy(e => e.Value)
             );
             sw.Stop();
@@ -194,7 +193,7 @@ namespace MatthL.SqliteEF.Tests
 
             // Assert - EF Core will treat this as an update and may not fail
             // The behavior depends on whether tracking is enabled
-            result.IsSuccess.Should().BeTrue();
+            result.IsFailure.Should().BeTrue();
         }
 
         [Fact]

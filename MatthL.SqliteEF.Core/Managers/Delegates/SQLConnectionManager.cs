@@ -11,11 +11,11 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
 {
     public class SQLConnectionManager
     {
-        private readonly IDbContextFactory<RootDbContext> _contextFactory;
+        private readonly Func<string, RootDbContext> _contextFactory;
         private ConnectionState _connectionState = ConnectionState.Disconnected;
         private readonly SemaphoreSlim _stateLock = new(1, 1);
         private SqliteConnection _persistentConnection;
-        private string _databasePath;
+        public string DatabasePath { get; set; } = ":memory:";
 
         public DateTime? LastConnectionTime { get; set; }
         public DateTime? LastActivityTime { get; set; }
@@ -42,17 +42,9 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
 
         public bool IsConnected => CurrentState == ConnectionState.Connected;
 
-        public SQLConnectionManager(IDbContextFactory<RootDbContext> contextFactory)
+        public SQLConnectionManager(Func<string, RootDbContext> contextFactory)
         {
-            _contextFactory = contextFactory ?? throw new ArgumentNullException(nameof(contextFactory));
-        }
-
-        /// <summary>
-        /// Met à jour le chemin de la base de données
-        /// </summary>
-        public void SetDatabasePath(string databasePath)
-        {
-            _databasePath = databasePath;
+            _contextFactory = contextFactory;
         }
 
         /// <summary>
@@ -102,7 +94,7 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
                 await ChangeStateAsync(ConnectionState.Connecting);
 
                 // Créer un context pour tester et configurer la connexion
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(DatabasePath);
 
                 // Test de connexion
                 var canConnect = await context.Database.CanConnectAsync();
@@ -147,7 +139,7 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
                     return Result.Success("Already disconnected");
                 }
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(DatabasePath);
 
                 // Optimisations avant fermeture
                 try
@@ -191,7 +183,7 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
                 if (!IsConnected)
                     return false;
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(DatabasePath);
 
                 // Test simple de connexion
                 var canConnect = await context.Database.CanConnectAsync();
@@ -238,7 +230,7 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
                 if (!IsConnected)
                     return Result.Failure("Not connected to database");
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(DatabasePath);
 
                 await context.Database.ExecuteSqlRawAsync("PRAGMA wal_checkpoint(FULL)");
                 UpdateActivity();
@@ -296,7 +288,7 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
                 if (!IsConnected)
                     return Result<Dictionary<string, string>>.Failure("Not connected to database");
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(DatabasePath);
 
                 var config = new Dictionary<string, string>();
 
@@ -334,6 +326,8 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
             try
             {
                 var connection = context.Database.GetDbConnection();
+                if (connection.State != System.Data.ConnectionState.Open)
+                    await connection.OpenAsync();
                 await using var command = connection.CreateCommand();
                 command.CommandText = $"PRAGMA {pragmaName};";
 
@@ -356,7 +350,7 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
                 if (!IsConnected)
                     return Result.Failure("Not connected to database");
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(DatabasePath);
 
                 await context.Database.ExecuteSqlRawAsync(sql);
                 UpdateActivity();

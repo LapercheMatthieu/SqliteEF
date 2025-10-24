@@ -13,7 +13,7 @@ namespace MatthL.SqliteEF.Core.Managers
 {
     public partial class SQLManager
     {
-        private int _maximumWritingTime_ms = 1000;
+        private int _maximumWritingTime_ms = 10000;
         public int MaximumWritingTime_ms
         {
             get { return _maximumWritingTime_ms; }
@@ -32,7 +32,7 @@ namespace MatthL.SqliteEF.Core.Managers
                 if (!authorization.CanCreate)
                     return Result.Failure($"Unauthorized to create {typeof(T).Name}");
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
 
                 await context.Set<T>().AddAsync(entity);
                 await context.SaveChangesAsync();
@@ -61,7 +61,7 @@ namespace MatthL.SqliteEF.Core.Managers
                 if (!authorization.CanCreate)
                     return Result.Failure($"Unauthorized to create {typeof(T).Name}");
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
 
                 await context.Set<T>().AddRangeAsync(entities);
                 await context.SaveChangesAsync();
@@ -90,7 +90,7 @@ namespace MatthL.SqliteEF.Core.Managers
                 if (!authorization.CanUpdate)
                     return Result.Failure($"Unauthorized to update {typeof(T).Name}");
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
 
                 context.Set<T>().Update(entity);
                 await context.SaveChangesAsync();
@@ -119,7 +119,7 @@ namespace MatthL.SqliteEF.Core.Managers
                 if (!authorization.CanUpdate)
                     return Result.Failure($"Unauthorized to update {typeof(T).Name}");
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
 
                 context.Set<T>().UpdateRange(entities);
                 await context.SaveChangesAsync();
@@ -148,7 +148,7 @@ namespace MatthL.SqliteEF.Core.Managers
                 if (!authorization.CanDelete)
                     return Result.Failure($"Unauthorized to delete {typeof(T).Name}");
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
 
                 context.Set<T>().Remove(entity);
                 await context.SaveChangesAsync();
@@ -177,7 +177,7 @@ namespace MatthL.SqliteEF.Core.Managers
                 if (!authorization.CanDelete)
                     return Result.Failure($"Unauthorized to delete {typeof(T).Name}");
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
 
                 context.Set<T>().RemoveRange(entities);
                 await context.SaveChangesAsync();
@@ -203,7 +203,7 @@ namespace MatthL.SqliteEF.Core.Managers
                 if (!authorization.CanDelete)
                     return Result.Failure($"Unauthorized to delete {typeof(T).Name}");
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
 
                 var entities = await context.Set<T>().ToListAsync();
                 context.Set<T>().RemoveRange(entities);
@@ -230,7 +230,7 @@ namespace MatthL.SqliteEF.Core.Managers
                 if (!authorization.CanRead)
                     return Result<List<T>>.Failure($"Unauthorized to read {typeof(T).Name}");
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
 
                 var entities = await context.Set<T>().ToListAsync();
                 return Result<List<T>>.Success(entities);
@@ -254,7 +254,7 @@ namespace MatthL.SqliteEF.Core.Managers
                 if (!authorization.CanRead)
                     return Result<T>.Failure($"Unauthorized to read {typeof(T).Name}");
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
 
                 var entity = await context.Set<T>().FindAsync(id);
                 if (entity == null)
@@ -281,7 +281,7 @@ namespace MatthL.SqliteEF.Core.Managers
                 if (!authorization.CanRead)
                     return Result<bool>.Failure($"Unauthorized to read {typeof(T).Name}");
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
 
                 var exists = await context.Set<T>().AnyAsync();
                 return Result<bool>.Success(exists);
@@ -327,7 +327,7 @@ namespace MatthL.SqliteEF.Core.Managers
             {
                 var authorization = _authorizationManager.GetAuthorization<T>();
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
 
                 // Vérifier si l'entité existe déjà
                 var existingEntity = await context.Set<T>().FindAsync(entity.Id);

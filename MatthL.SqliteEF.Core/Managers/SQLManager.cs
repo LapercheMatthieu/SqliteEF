@@ -4,6 +4,7 @@ using MatthL.SqliteEF.Core.Enums;
 using MatthL.SqliteEF.Core.Managers.Delegates;
 using MatthL.SqliteEF.Core.Models;
 using MatthL.SqliteEF.Core.Services;
+using MatthL.SqliteEF.Core.Tools;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,10 +15,20 @@ namespace MatthL.SqliteEF.Core.Managers
 {
     public partial class SQLManager
     {
-        private readonly IDbContextFactory<RootDbContext> _contextFactory;
-        private readonly SemaphoreSlim _readLock = new SemaphoreSlim(5, 5);
-        private readonly SemaphoreSlim _writeLock = new SemaphoreSlim(1, 1);
+        private readonly Func<string, RootDbContext> _contextFactory;
+        private readonly EventSemaphoreSlim _readLock = new EventSemaphoreSlim(5, 5);
+        private readonly EventSemaphoreSlim _writeLock = new EventSemaphoreSlim(1, 1);
         private readonly IAuthorizationManager _authorizationManager;
+
+        // Événements publics
+        public event Action<int> ReadOperationStarted;
+        public event Action<int> ReadOperationEnded;
+        public event Action WriteOperationStarted;
+        public event Action WriteOperationEnded;
+
+        public bool IsReading => _readLock.IsAcquired;
+        public bool IsWriting => _writeLock.IsAcquired;
+        public int ActiveReaders => _readLock.ActiveCount;
 
         // Gestionnaires délégués
         private readonly SQLConnectionManager _connectionManager;
@@ -30,23 +41,27 @@ namespace MatthL.SqliteEF.Core.Managers
         /// Access to the db context to bypass the functions, use it carefully
         /// Note: Creates a new disposable context each time
         /// </summary>
-        public RootDbContext DbContext => _contextFactory.CreateDbContext();
+        public RootDbContext DbContext => _contextFactory(_databaseManager.FullPath);
+
 
         /// <summary>
         /// Main Builder
         /// </summary>
-        /// <param name="contextFactory">the db context factory, must have been set inside the IOC</param>
         /// <param name="folderPath">Path to the folder containing the database file</param>
         /// <param name="fileName">Name of the database file (without extension)</param>
         /// <param name="extension">File extension (e.g., ".db", ".sqlite")</param>
         /// <param name="authorizationManager">Authorization manager for controlling access</param>
         public SQLManager(
-            IDbContextFactory<RootDbContext> contextFactory,
+            Func<string, RootDbContext> contextFactory,
             string folderPath = "",
             string fileName = "database",
             string extension = ".db",
             IAuthorizationManager authorizationManager = null)
         {
+            var databasePath = string.IsNullOrEmpty(folderPath)
+            ? ":memory:"
+            : Path.Combine(folderPath, fileName + extension);
+
             _contextFactory = contextFactory ?? throw new ArgumentNullException(nameof(contextFactory));
             _authorizationManager = authorizationManager ?? new DefaultAuthorizationManager();
 
@@ -66,6 +81,7 @@ namespace MatthL.SqliteEF.Core.Managers
                 _databaseManager.SetPaths(folderPath, fileName, extension);
                 _databaseManager.SetPaths(); // Valider les chemins
             }
+            FinalizeInitialization();
         }
 
         /// <summary>
@@ -75,10 +91,14 @@ namespace MatthL.SqliteEF.Core.Managers
         /// <param name="fileFullPath">Full path to the database file (including extension)</param>
         /// <param name="authorizationManager">Authorization manager</param>
         public SQLManager(
-            IDbContextFactory<RootDbContext> contextFactory,
+            Func<string, RootDbContext> contextFactory,
             string fileFullPath,
             IAuthorizationManager authorizationManager = null)
         {
+            var databasePath = string.IsNullOrEmpty(fileFullPath)
+            ? ":memory:"
+            : fileFullPath;
+
             _contextFactory = contextFactory ?? throw new ArgumentNullException(nameof(contextFactory));
             _authorizationManager = authorizationManager ?? new DefaultAuthorizationManager();
 
@@ -86,6 +106,7 @@ namespace MatthL.SqliteEF.Core.Managers
             var folderPath = Path.GetDirectoryName(fileFullPath);
             var fileName = Path.GetFileNameWithoutExtension(fileFullPath);
             var extension = Path.GetExtension(fileFullPath);
+
 
             // Initialiser les managers délégués
             _connectionManager = new SQLConnectionManager(_contextFactory);
@@ -102,7 +123,18 @@ namespace MatthL.SqliteEF.Core.Managers
             {
                 _databaseManager.SetPaths(folderPath, fileName, extension);
                 _databaseManager.SetPaths(); // Valider les chemins
+
             }
+            FinalizeInitialization();
+        }
+
+        private void FinalizeInitialization()
+        {
+            _readLock.SemaphoreAcquired += (remaining) => ReadOperationStarted?.Invoke(remaining);
+            _readLock.SemaphoreReleased += (remaining) => ReadOperationEnded?.Invoke(remaining);
+
+            _writeLock.SemaphoreAcquired += (remaining) => WriteOperationStarted?.Invoke();
+            _writeLock.SemaphoreReleased += (remaining) => WriteOperationEnded?.Invoke();
         }
 
         // Propriétés publiques
@@ -131,7 +163,9 @@ namespace MatthL.SqliteEF.Core.Managers
         /// Set database paths with extension
         /// </summary>
         public void SetPaths(string folderPath, string fileName, string extension = null)
-            => _databaseManager.SetPaths(folderPath, fileName, extension);
+        {
+            _databaseManager.SetPaths(folderPath, fileName, extension);
+        }
 
         /// <summary>
         /// Validate that paths are correctly set

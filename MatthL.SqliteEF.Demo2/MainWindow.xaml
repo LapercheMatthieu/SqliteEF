@@ -4,9 +4,52 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:MatthL.SqliteEF.Demo2"
-        mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
+       Title="SQLite Manager Demo" Height="850" Width="1400"
+        WindowStartupLocation="CenterScreen">
     <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="350"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
 
+        <!-- Colonne gauche: Liste compacte et vue générale -->
+        <Border Grid.Column="0" Background="#F5F5F5" Padding="16">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <!-- Section vues compactes -->
+                    <TextBlock Text="🗄️ Bases de données (Vue Compacte)" 
+                               FontSize="16" 
+                               FontWeight="Bold"
+                               Margin="0,0,0,16"/>
+
+                    <StackPanel x:Name="CompactViewsPanel" />
+
+                    <Separator Margin="0,24"/>
+
+                    <!-- Section vue générale -->
+                    <TextBlock Text="📊 Vue Générale" 
+                               FontSize="16" 
+                               FontWeight="Bold"
+                               Margin="0,16,0,16"/>
+
+                    <ContentControl x:Name="GeneralViewContainer"/>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Colonne droite: Vue détaillée -->
+        <Border Grid.Column="1" Background="White" Padding="16">
+            <StackPanel>
+                <TextBlock Text="📋 Vue Détaillée" 
+                           FontSize="18" 
+                           FontWeight="Bold"
+                           Margin="0,0,0,16"/>
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ContentControl x:Name="DetailViewContainer"/>
+                </ScrollViewer>
+            </StackPanel>
+        </Border>
     </Grid>
 </Window>
+

@@ -28,7 +28,7 @@ namespace MatthL.SqliteEF.Core.Managers
             await _writeLock.WaitAsync(_maximumWritingTime_ms);
             try
             {
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
                 await using var transaction = await context.Database.BeginTransactionAsync();
 
                 try
@@ -73,7 +73,7 @@ namespace MatthL.SqliteEF.Core.Managers
             await _writeLock.WaitAsync(_maximumWritingTime_ms);
             try
             {
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
                 await using var transaction = await context.Database.BeginTransactionAsync();
 
                 try
@@ -121,7 +121,7 @@ namespace MatthL.SqliteEF.Core.Managers
                 if (!authorization.CanCreate && !authorization.CanUpdate && !authorization.CanDelete)
                     return Result.Failure($"Unauthorized to perform write operations on {typeof(T).Name}");
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
                 await using var transaction = await context.Database.BeginTransactionAsync();
 
                 try
@@ -165,7 +165,7 @@ namespace MatthL.SqliteEF.Core.Managers
             await _readLock.WaitAsync();
             try
             {
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
                 await using var transaction = await context.Database.BeginTransactionAsync();
 
                 try
@@ -237,7 +237,7 @@ namespace MatthL.SqliteEF.Core.Managers
                     }
                 }
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
                 await using var transaction = await context.Database.BeginTransactionAsync();
 
                 try

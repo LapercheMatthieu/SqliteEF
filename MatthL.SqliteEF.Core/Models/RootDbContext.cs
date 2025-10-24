@@ -9,10 +9,18 @@ using System.Threading.Tasks;
 
 namespace MatthL.SqliteEF.Core.Models
 {
+    /// <summary>
+    /// The base db context to use in sqliteEF
+    /// public TestDbContext(string path) : base(path) { }
+    /// </summary>
     public class RootDbContext : DbContext
     {
         public string DatabasePath;
 
+        public RootDbContext(string databasePath)
+        {
+            DatabasePath = databasePath;
+        }
         /// <summary>
         /// Loop a travers tous les DBSets pour appliquer la configuration
         /// </summary>

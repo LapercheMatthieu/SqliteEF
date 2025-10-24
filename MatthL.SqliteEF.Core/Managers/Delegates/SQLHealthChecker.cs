@@ -24,11 +24,11 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
 
     internal class SQLHealthChecker
     {
-        private readonly IDbContextFactory<RootDbContext> _contextFactory;
+        private readonly Func<string, RootDbContext> _contextFactory;
         private readonly SQLConnectionManager _connectionManager;
 
         public SQLHealthChecker(
-            IDbContextFactory<RootDbContext> contextFactory,
+            Func<string, RootDbContext> contextFactory,
             SQLConnectionManager connectionManager)
         {
             _contextFactory = contextFactory ?? throw new ArgumentNullException(nameof(contextFactory));
@@ -61,7 +61,7 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
                 }
 
                 // Test de performance avec un context temporaire
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(databasePath);
 
                 var sw = Stopwatch.StartNew();
                 await context.Database.ExecuteSqlRawAsync("SELECT 1");
@@ -175,14 +175,29 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
             try
             {
                 var connection = context.Database.GetDbConnection();
+
+                // S'assurer que la connexion est ouverte
+                if (connection.State != System.Data.ConnectionState.Open)
+                {
+                    await connection.OpenAsync();
+                }
+
                 await using var command = connection.CreateCommand();
                 command.CommandText = "PRAGMA integrity_check;";
 
                 var result = await command.ExecuteScalarAsync();
-                return result?.ToString() == "ok";
+
+                // SQLite retourne "ok" si tout va bien (insensible à la casse)
+                // Peut aussi retourner "ok" avec des espaces, donc on trim
+                var resultString = result?.ToString()?.Trim();
+
+                return !string.IsNullOrEmpty(resultString) &&
+                       resultString.Equals("ok", StringComparison.OrdinalIgnoreCase);
             }
-            catch
+            catch (Exception ex)
             {
+                // Log l'erreur pour debug
+                Console.WriteLine($"Integrity check error: {ex.Message}");
                 return false;
             }
         }
@@ -210,7 +225,7 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
                     };
                 }
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_connectionManager.DatabasePath);
 
                 var sw = Stopwatch.StartNew();
                 await context.Database.ExecuteSqlRawAsync("SELECT 1");
@@ -251,7 +266,7 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
                 if (!_connectionManager.IsConnected)
                     return Result<DatabaseStatistics>.Failure("Database not connected");
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_connectionManager.DatabasePath);
 
                 var stats = new DatabaseStatistics();
 
@@ -285,6 +300,8 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
 
                 // Get table count
                 var connection = context.Database.GetDbConnection();
+                if (connection.State != System.Data.ConnectionState.Open)
+                    await connection.OpenAsync();
                 await using var command = connection.CreateCommand();
                 command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'";
                 var tableCount = await command.ExecuteScalarAsync();
@@ -303,6 +320,8 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
             try
             {
                 var connection = context.Database.GetDbConnection();
+                if (connection.State != System.Data.ConnectionState.Open)
+                    await connection.OpenAsync();
                 await using var command = connection.CreateCommand();
                 command.CommandText = $"PRAGMA {pragmaName};";
 

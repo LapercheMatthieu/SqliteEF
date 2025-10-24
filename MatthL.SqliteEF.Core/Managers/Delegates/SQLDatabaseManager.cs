@@ -15,7 +15,7 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
 {
     internal class SQLDatabaseManager
     {
-        private readonly IDbContextFactory<RootDbContext> _contextFactory;
+        private readonly Func<string, RootDbContext> _contextFactory;
         private string _folderPath;
         private string _fileName;
         private string _fileExtension;
@@ -30,7 +30,7 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
         public bool IsInMemory => _inMemory;
 
         public SQLDatabaseManager(
-            IDbContextFactory<RootDbContext> contextFactory,
+            Func<string, RootDbContext> contextFactory,
             SQLConnectionManager connectionManager,
             string folderPath = null,
             string fileName = null,
@@ -66,6 +66,7 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
             {
                 _fileExtension = Path.GetExtension(fileName);
             }
+            _connectionManager.DatabasePath = FullPath;
             // Sinon, garder l'extension par défaut définie dans le constructeur
         }
 
@@ -110,7 +111,7 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
 
                 string filePath = FullPath;
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(FullPath);
 
                 if (!_inMemory && File.Exists(filePath))
                 {
@@ -178,7 +179,7 @@ namespace MatthL.SqliteEF.Core.Managers.Delegates
         {
             try
             {
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(FullPath);
 
                 await context.Database.ExecuteSqlRawAsync("PRAGMA wal_checkpoint(TRUNCATE)");
                 await context.Database.ExecuteSqlRawAsync("PRAGMA optimize");

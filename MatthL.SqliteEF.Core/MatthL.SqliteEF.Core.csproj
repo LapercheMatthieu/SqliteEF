@@ -9,7 +9,7 @@
 		<!-- Propriétés NuGet -->
 		<PackageId>MatthL.SqliteEF</PackageId>
 		<Title>SqliteEF</Title>
-		<Version>0.9.1</Version>
+		<Version>0.9.2</Version>
 		<Authors>Matthieu L</Authors>
 		<Company>Matthieu L</Company>
 		<Description>Reduce drastically the boilerplate for Sqlite + Entity framework</Description>
@@ -40,4 +40,6 @@
 		<None Include="LICENSE" Pack="true" PackagePath="\" />
 		<None Include="README.md" Pack="true" PackagePath="\" />
 	</ItemGroup>
+	
+	
 </Project>

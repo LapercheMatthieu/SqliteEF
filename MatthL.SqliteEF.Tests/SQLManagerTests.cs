@@ -7,6 +7,7 @@ using MatthL.SqliteEF.Core.Models;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -26,20 +27,30 @@ namespace MatthL.SqliteEF.Tests
 
         public async Task InitializeAsync()
         {
+
             _testDbPath = Path.Combine(Path.GetTempPath(), "SQLiteTests");
             _testDbName = $"TestDb_{Guid.NewGuid()}";
             Directory.CreateDirectory(_testDbPath);
 
-            var contextFactory = new TestDbContextFactory();
             _sqlManager = new SQLManager(
-                contextFactory,
+                path => new TestDbContext(path),
                 _testDbPath,
                 _testDbName,
                 ".db"
             );
 
-            await _sqlManager.Create();
-            await _sqlManager.ConnectAsync();
+            // AFFICHEZ LE CHEMIN !
+            Debug.WriteLine($"Database path: {_sqlManager.GetFullPath}");
+            Debug.WriteLine($"File exists before create: {File.Exists(_sqlManager.GetFullPath)}");
+
+            var creationResult = await _sqlManager.Create();
+            Debug.WriteLine($"Creation result: {creationResult.IsSuccess} - {creationResult.Error}");
+
+            Debug.WriteLine($"File exists after create: {File.Exists(_sqlManager.GetFullPath)}");
+
+            var connectionResult = await _sqlManager.ConnectAsync();
+
+
         }
 
         public async Task DisposeAsync()
@@ -172,13 +183,15 @@ namespace MatthL.SqliteEF.Tests
         public async Task QuickHealthCheckAsync_ShouldBeFasterThanFullCheck()
         {
             // Act
-            var sw1 = System.Diagnostics.Stopwatch.StartNew();
-            await _sqlManager.QuickHealthCheckAsync();
-            sw1.Stop();
+
 
             var sw2 = System.Diagnostics.Stopwatch.StartNew();
             await _sqlManager.CheckHealthAsync();
             sw2.Stop();
+
+            var sw1 = System.Diagnostics.Stopwatch.StartNew();
+            await _sqlManager.QuickHealthCheckAsync();
+            sw1.Stop();
 
             // Assert
             sw1.ElapsedMilliseconds.Should().BeLessThanOrEqualTo(sw2.ElapsedMilliseconds);
@@ -1104,36 +1117,22 @@ namespace MatthL.SqliteEF.Tests
         public int Value { get; set; }
         public void ConfigureEntity(ModelBuilder modelBuilder)
         {
+            modelBuilder.Entity<TestEntity>(builder =>
+            {
+                builder.ToTable("TestEntities");
+                builder.HasKey(e => e.Id);
+
+            });
 
         }
     }
 
     public class TestDbContext : RootDbContext
     {
+        public TestDbContext(string path) : base(path) { }
         public DbSet<TestEntity> TestEntities { get; set; }
-
-        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-        {
-            if (!optionsBuilder.IsConfigured)
-            {
-                optionsBuilder.UseSqlite("DataSource=:memory:");
-            }
-        }
-
-        protected override void OnModelCreating(ModelBuilder modelBuilder)
-        {
-            base.OnModelCreating(modelBuilder);
-            modelBuilder.Entity<TestEntity>().ToTable("TestEntities");
-        }
     }
 
-    public class TestDbContextFactory : IDbContextFactory<RootDbContext>
-    {
-        public RootDbContext CreateDbContext()
-        {
-            return new TestDbContext();
-        }
-    }
 
 
     #endregion

@@ -1,17 +1,125 @@
-﻿<Window x:Class="SQLiteManager.Demo.MainWindow"
+﻿<Window x:Class="MatthL.SqliteEF.Demo.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:SQLiteManager.Demo" xmlns:detailviews="clr-namespace:SQLiteManager.Views.Databases.DetailViews;assembly=SQLiteManager.Views"
-        mc:Ignorable="d"
-        Title="MainWindow" Height="600" Width="800">
+        xmlns:local="clr-namespace:MatthL.SqliteEF.Demo" 
+            Title="SQLite Manager Demo - VRAI SQLManager avec Entity Framework" Height="900" Width="1500"
+        WindowStartupLocation="CenterScreen">
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="auto"/>
-            <RowDefinition Height="100*"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        <detailviews:DatabaseDetailView x:Name="DatabaseDetails"/>
-        <local:TestButtonViews Grid.Row="1"/>
+
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="350"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Colonne gauche: Liste compacte et vue générale -->
+            <Border Grid.Column="0" Background="#F5F5F5" Padding="16">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <!-- Section vues compactes -->
+                        <TextBlock Text="🗄️ Bases de données (Vue Compacte)" 
+                                   FontSize="16" 
+                                   FontWeight="Bold"
+                                   Margin="0,0,0,16"/>
+
+                        <StackPanel x:Name="CompactViewsPanel" />
+
+                        <Separator Margin="0,24"/>
+
+                        <!-- Section vue générale -->
+                        <TextBlock Text="📊 Vue Générale" 
+                                   FontSize="16" 
+                                   FontWeight="Bold"
+                                   Margin="0,16,0,16"/>
+
+                        <ContentControl x:Name="GeneralViewContainer"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <!-- Colonne droite: Vue détaillée -->
+            <Border Grid.Column="1" Background="White" Padding="16">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="📋 Vue Détaillée (avec vraies données!)" 
+           FontSize="18" 
+           FontWeight="Bold"
+           Margin="0,0,0,16" />
+                    <ContentControl Grid.Row="1" x:Name="DetailViewContainer"/>
+                </Grid>
+             
+            </Border>
+        </Grid>
+
+        <!-- Barre d'actions manuelles -->
+        <Border Grid.Row="1" 
+                Background="#E3F2FD" 
+                BorderBrush="#2196F3" 
+                BorderThickness="0,1,0,0"
+                Padding="16">
+            <StackPanel>
+                <TextBlock Text="🎮 Actions manuelles (sur la première base - users.db)" 
+                           FontWeight="Bold" 
+                           Margin="0,0,0,12"/>
+
+                <UniformGrid Rows="1" Columns="4">
+                    <Button Content="➕ Ajouter 5 personnes" 
+                            Click="AddPeopleButton_Click"
+                            Margin="0,0,8,0"
+                            Padding="12,8"
+                            Background="#4CAF50"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Cursor="Hand"/>
+
+                    <Button Content="🔄 Transaction complexe" 
+                            Click="ComplexTransactionButton_Click"
+                            Margin="4,0"
+                            Padding="12,8"
+                            Background="#2196F3"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Cursor="Hand"/>
+
+                    <Button Content="🧹 Nettoyer modifiés" 
+                            Click="CleanupButton_Click"
+                            Margin="4,0"
+                            Padding="12,8"
+                            Background="#FF9800"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Cursor="Hand"/>
+
+                    <Button Content="📊 Statistiques" 
+                            Click="StatsButton_Click"
+                            Margin="8,0,0,0"
+                            Padding="12,8"
+                            Background="#9C27B0"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Cursor="Hand"/>
+                </UniformGrid>
+            </StackPanel>
+        </Border>
+
+        <!-- Barre de statut -->
+        <Border Grid.Row="2" 
+                Background="#263238" 
+                Padding="16,8">
+            <TextBlock x:Name="StatusText" 
+                       Text="Initialisation..." 
+                       Foreground="White" 
+                       FontSize="12"/>
+        </Border>
     </Grid>
 </Window>

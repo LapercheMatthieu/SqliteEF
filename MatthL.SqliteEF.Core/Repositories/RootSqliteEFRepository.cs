@@ -1,6 +1,7 @@
 ﻿using MatthL.ResultLogger.Core.Models;
 using MatthL.SqliteEF.Core.Managers;
 using MatthL.SqliteEF.Core.Models;
+using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -17,10 +18,10 @@ namespace MatthL.SqliteEF.Core.Repositories
     /// Allows automatic synchronization of the ObservableCollection of IBaseEntity
     /// Mandatory : The IBaseEntity must be in a dbset of the RootDBContext
     /// </summary>
-    public class RootSqliteEFRepository : ISqliteEFRepository
+    public class RootSqliteEFRepository //: ISqliteEFRepository
     {
-        private List<ObservableCollection<IBaseEntity>> _subscribedCollections = new();
-        private SQLManager _SQLManager;
+        /*private List<ObservableCollection<IBaseEntity>> _subscribedCollections = new();
+        private SQLManager<TContext> _SQLManager;
         public RootSqliteEFRepository(SQLManager SQLManager)
         {
             _SQLManager = SQLManager;
@@ -208,6 +209,6 @@ namespace MatthL.SqliteEF.Core.Repositories
         public void Dispose()
         {
             UnsubscribeAll();
-        }
+        }*/
     }
 }

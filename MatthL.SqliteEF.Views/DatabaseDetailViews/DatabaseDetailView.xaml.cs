@@ -13,7 +13,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Navigation;
 using System.Windows.Shapes;
 
-namespace MatthL.SqliteEF.Views.Databases.DetailViews
+namespace MatthL.SqliteEF.Views.DatabaseDetailViews
 {
     /// <summary>
     /// Logique d'interaction pour DatabaseDetailView.xaml
@@ -21,16 +21,29 @@ namespace MatthL.SqliteEF.Views.Databases.DetailViews
     public partial class DatabaseDetailView : UserControl
     {
         public DatabaseDetailViewModel ViewModel { get; set; }
+
+        public DatabaseDetailView()
+        {
+            InitializeComponent();
+            this.DataContextChanged += DatabaseDetailView_DataContextChanged;
+        }
+
+        private void DatabaseDetailView_DataContextChanged(object sender, DependencyPropertyChangedEventArgs e)
+        {
+            if(DataContext is  DatabaseDetailViewModel viewModel)
+            {
+                ViewModel = viewModel;
+                DataContext = ViewModel;
+            }
+        }
+
         public DatabaseDetailView(DatabaseDetailViewModel viewModel)
         {
             InitializeComponent();
             ViewModel = viewModel;
             DataContext = ViewModel;
         }
-        public DatabaseDetailView()
-        {
-            InitializeComponent();
-        }
+
         public void SetDataContext(DatabaseDetailViewModel viewModel)
         {
             ViewModel = viewModel;

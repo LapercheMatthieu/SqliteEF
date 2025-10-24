@@ -28,7 +28,7 @@ namespace MatthL.SqliteEF.Core.Managers
                 if (!authorization.CanRead)
                     return Result<List<T>>.Failure($"Unauthorized to read {typeof(T).Name}");
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
 
                 var results = await context.Set<T>()
                     .Where(predicate)
@@ -61,7 +61,7 @@ namespace MatthL.SqliteEF.Core.Managers
                 if (!authorization.CanRead)
                     return Result<bool>.Failure($"Unauthorized to read {typeof(T).Name}");
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
 
                 var exists = await context.Set<T>()
                     .AnyAsync(predicate);
@@ -98,7 +98,7 @@ namespace MatthL.SqliteEF.Core.Managers
                 if (pageNumber < 1) pageNumber = 1;
                 if (pageSize < 1) pageSize = 10;
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
 
                 var query = context.Set<T>().AsQueryable();
 
@@ -141,7 +141,7 @@ namespace MatthL.SqliteEF.Core.Managers
                 if (!authorization.CanRead)
                     return Result<int>.Failure($"Unauthorized to read {typeof(T).Name}");
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
 
                 var query = context.Set<T>().AsQueryable();
 
@@ -177,7 +177,7 @@ namespace MatthL.SqliteEF.Core.Managers
                 if (!authorization.CanRead)
                     return Result<T>.Failure($"Unauthorized to read {typeof(T).Name}");
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
 
                 var result = await context.Set<T>()
                     .FirstOrDefaultAsync(predicate);
@@ -214,7 +214,7 @@ namespace MatthL.SqliteEF.Core.Managers
                 if (!authorization.CanRead)
                     return Result<List<T>>.Failure($"Unauthorized to read {typeof(T).Name}");
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
 
                 var query = context.Set<T>().AsQueryable();
                 query = queryBuilder(query);
@@ -250,7 +250,7 @@ namespace MatthL.SqliteEF.Core.Managers
                 if (!authorization.CanRead)
                     return Result<List<T>>.Failure($"Unauthorized to read {typeof(T).Name}");
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
 
                 var query = context.Set<T>().AsNoTracking().AsQueryable();
                 query = queryBuilder(query);
@@ -286,7 +286,7 @@ namespace MatthL.SqliteEF.Core.Managers
                 if (!authorization.CanRead)
                     return Result<T>.Failure($"Unauthorized to read {typeof(T).Name}");
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
 
                 var query = context.Set<T>().AsQueryable();
                 query = queryBuilder(query);
@@ -325,7 +325,7 @@ namespace MatthL.SqliteEF.Core.Managers
                 if (!authorization.CanRead)
                     return Result<TResult>.Failure($"Unauthorized to read {typeof(T).Name}");
 
-                await using var context = await _contextFactory.CreateDbContextAsync();
+                using var context = _contextFactory(_databaseManager.FullPath);
 
                 var query = context.Set<T>().AsQueryable();
                 var result = await aggregateOperation(query);
